@@ -1,0 +1,77 @@
+#!/usr/bin/env ruby
+require "rubygems"
+require "thor"
+
+# This bit of code loads the rails app generator, so we can call it directly
+# rather than having to use a run() call to trigger it. Because we can call
+# it directly we can, in turn, ask questions here in this script, and make
+# the answers available to the custom rails app template later on.
+require 'rails/generators'
+require 'rails/generators/rails/app/app_generator'
+module Rails
+  module Generators
+    class AppGenerator # :nodoc:
+      # We want to exit on failure to be kind to other libraries
+      # This is only when accessing via CLI
+      def self.exit_on_failure?
+        true
+      end
+    end
+  end
+end
+
+# This line begins the api_app logic:
+class ApiApp < Thor
+  include Thor::Actions
+
+  desc "new", "Creates a new Rails API App"
+  def new(app_name = nil)
+    app_name ||= ask("What should the new app be called?")
+
+    # NOTE: Only supporting mysql & postgresql with this template for now.
+    # That's what I use. #YAGNI
+    db_opts = [
+      "",
+      "mysql",
+      # "oracle",
+      "postgresql",
+      # "sqlite3",
+      # "frontbase",
+      # "ibm_db""sqlserver",
+      # "jdbcmysql",
+      # "jdbcsqlite3",
+      # "jdbcpostgresql",
+      # "jdbc",
+    ]
+    database = ask "What database would you like to use? (Default postgresql)", limited_to: db_opts
+    database = "postgresql" if database == ""
+
+    root_path = File.expand_path("#{File.dirname(__FILE__)}/../")
+    options = [
+      "--template=#{File.join(root_path, "api_template.rb")}",
+      "--database=#{database}",
+      "--skip-gems=jbuilder",
+      "--skip-gems=rails-html-sanitizer",
+      "--skip-javascript",
+      "--skip-test-unit",
+      "--skip-sprockets",
+    ]
+
+    options << app_name
+    Rails::Generators::AppGenerator.start options
+  end
+
+  desc "new_test", "Creates a new test app (in the test_app folder)"
+  def new_test
+    new("test_app")
+  end
+
+  desc "clear_test", "Clears any test apps and kills spring"
+  def clear_test
+    run "cd test_app && spring stop"
+    run "rm -rf test_app/*"
+    run "rm -rf test_app/.??*"
+  end
+end
+
+ApiApp.start
