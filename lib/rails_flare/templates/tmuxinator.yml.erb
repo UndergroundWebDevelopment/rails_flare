@@ -1,0 +1,36 @@
+# ~/.tmuxinator/<%= app_name %>.yml
+
+name: <%= app_name %>
+root: <%= destination_root %>
+
+# Optional tmux socket
+# socket_name: foo
+
+# Runs before everything. Use it to start daemons etc.
+# pre: sudo /etc/rc.d/mysqld start
+
+# Runs in each window and pane before window/pane specific commands. Useful for setting up interpreter versions.
+# pre_window: rbenv shell 2.0.0-p247
+
+# Pass command line options to tmux. Useful for specifying a different tmux.conf.
+# tmux_options: -f ~/.tmux.mac.conf
+
+# Change the command to call tmux.  This can be used by derivatives/wrappers like byobu.
+# tmux_command: byobu
+
+windows:
+  - editor:
+      layout: b79b,238x59,0,0{170x59,0,0,20,67x59,171,0,23}
+      panes:
+        - vim -c NERDTree -c "winc l" # Opens vim and automatically runs NERDTree, and changes to the empty file window.
+        - 
+  - console:
+      layout: even-horizontal
+      panes:
+        -
+        - sleep 3 && psql -d <%= app_name %>_development
+  - server:
+      layout: even-horizontal
+      panes:
+        - foreman start
+        - tail -f log/development.log

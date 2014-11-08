@@ -38,6 +38,12 @@ def db_type
   db_type.to_sym
 end
 
+unless app_name == "test_app"
+  if yes? "Create tmuxinator script for #{app_name}?"
+    template "templates/tmuxinator.yml.erb", File.expand_path("~/.tmuxinator/#{app_name}.yml")
+  end
+end
+
 ########################
 #   Database Scripts   #
 ########################
