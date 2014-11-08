@@ -110,6 +110,19 @@ gem "active_model_serializers", version: "~> 0.9.0"
 # Fix forgery protection for an API:
 gsub_file 'app/controllers/application_controller.rb', /protect_from_forgery with: :exception/, 'protect_from_forgery with: :null_session'
 
+# Configure rails scaffold to be more in-line with API development:
+# NOTE: I know the indenting looks off, but it works.
+application do <<-'RUBY'
+config.generators do |g|
+      g.template_engine false
+      g.test_framework  :rspec, fixture: false
+      g.stylesheets     false
+      g.javascripts     false
+      g.helper          false
+    end
+RUBY
+end
+
 ###########################
 #   Testing & Dev Tools   #
 ###########################
@@ -146,6 +159,13 @@ gem_group :development, :staging do
   # environments.
   gem 'mail_safe', version: '~> 0.3.3'
 end
+
+# Create staging environment
+run 'cp config/environments/production.rb config/environments/staging.rb'
+
+# Install lograge, enable it for staging & production.
+gem 'lograge', version: '0.3.0'
+application 'config.lograge.enabled = true', env: ["production", "staging"]
 
 ##################
 #    Options     #
