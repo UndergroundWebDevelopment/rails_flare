@@ -8,9 +8,16 @@ The created app has the following features:
   * Tests use rspec-rails.
   * Postgres configured as the database.
 
-Usage:
+## Usage:
 
 `rails_flare new`
 
+## Todo:
+  * Add support for postgis geo data (optional)
+  * Ensure roar-rails works (we may have to define a hal media type).
+  * Add Ember support (optional).
+
+### More Information
 More information about application templates can be found
 [here](http://guides.rubyonrails.org/rails_application_templates.html).
+
