@@ -99,16 +99,9 @@ after_bundle do
 end
 gem "paranoia", version: "~> 2.0"
 gem 'responders', version: '~> 2.0' # respond_to & respond_with
-gem "roar-rails", version: "~> 0.1.6" # ROAR representers & parsers.
-application "config.representer.represented_formats = [:hal, :json]"
-after_bundle do
-  inject_into_file "app/controllers/application_controller.rb", after: "class ApplicationController < ActionController::Base\n" do <<-'RUBY'
-  include Roar::Rails::ControllerAdditions
-  respond_to :json, :hal
-  RUBY
-  end
-end
+gem "active_model_serializers", version: "~> 0.9.0"
 
+# Fix forgery protection for an API:
 gsub_file 'app/controllers/application_controller.rb', /protect_from_forgery with: :exception/, 'protect_from_forgery with: :null_session'
 
 ###########################
@@ -133,8 +126,12 @@ gem_group :development, :test do
 
   # Capistrano 3 for deployment:
   gem 'capistrano', version: '~> 3.2.0'
+  gem 'capistrano-rails', version: '1.1.1'
   after_bundle do
     run 'bundle exec cap install'
+    insert_into_file 'Capfile', after: "require 'capistrano/deploy'\n" do
+      "\n# Include rails deploy tasks\nrequire 'capistrano/rails'\n"
+    end
   end
 end
 
@@ -144,14 +141,12 @@ gem_group :development, :staging do
   gem 'mail_safe', version: '~> 0.3.3'
 end
 
-# Run rspec generator:
-
 ##################
 #    Options     #
 ##################
 
 # Devise:
-if yes?("Would you like to install Devise?")
+if yes? "Would you like to install Devise?"
   gem "devise", version: '~> 3.4.1'
   after_bundle do
     generate "devise:install"
@@ -163,6 +158,56 @@ if yes?("Would you like to install Devise?")
   after_bundle do
     generate "devise", model_name
     generate "migration", "AddDeletedAtTo#{model_name.camelize} deleted_at:datetime:index"
+  end
+end
+
+if yes? "Would you like to install EmberJS?"
+  gem "jquery-rails", version: "~> 3.1.2"
+  gem "ember-rails", version: "~> 0.15.0"
+  gem "ember-source", version: "~> 1.8.1"
+  gem 'coffee-rails', version: "~> 4.1.0"
+  gem 'haml-rails', version: "~> 0.5.3"
+
+  after_bundle do
+    generate "ember:bootstrap", "-g --javascript-engine coffee"
+    
+    # Configure the app to serve Ember.js and app assets from an AssetsController
+    generate :controller, "Assets", "index"
+    run "rm app/views/assets/index.html.erb"
+    file 'app/views/assets/index.html.erb', <<-CODE
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>#{@app_name.titleize}</title>
+      <%= stylesheet_link_tag    "application", :media => "all" %>
+      <%= csrf_meta_tags %>
+    </head>
+    <body>
+      <%= javascript_include_tag "application" %>
+    </body>
+    </html>
+    CODE
+
+    remove_file 'app/assets/javascripts/templates/application.handlebars'
+
+    file 'app/assets/javascripts/templates/application.handlebars', <<-CODE
+    <div style="width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; text-align: center; font-family: sans-serif;">
+      <img src="http://emberjs.com/images/about/ember-productivity-sm.png" style="display: block; margin: 0 auto;">
+      <h1>Welcome to Ember.js!</h1>
+      <p>You're running an Ember.js app on top of Ruby on Rails. To get started, replace this content
+      (inside <code>app/assets/javascripts/templates/application.handlebars</code>) with your application's
+      HTML.</p>
+    </div>
+    CODE
+
+    run "rm -rf app/views/layouts"
+    route "root :to => 'assets#index'"
+
+    # Generate a default serializer that is compatible with ember-data
+    generate :serializer, "application", "--parent", "ActiveModel::Serializer"
+    inject_into_class "app/serializers/application_serializer.rb", 'ApplicationSerializer' do
+      "  embed :ids, :include => true\n"
+    end
   end
 end
 
