@@ -2,18 +2,18 @@ def source_paths
   [File.expand_path(File.dirname(__FILE__))]
 end
 
-def db_start_script
-  @db_start_script || raise("DB Start Script not yet set!")
+def db_start_command
+  @db_start_command || raise("DB Start Command not yet set!")
 end
 
-def db_start_script= (val)
-  @db_start_script = val
+def db_start_command= (val)
+  @db_start_command = val
 end
 
 def with_db(options = {})
   options[:sleep] ||= 3
   db_pid = fork do
-    exec db_start_script
+    exec db_start_command
   end
 
   sleep options[:sleep]
@@ -24,38 +24,41 @@ def with_db(options = {})
   end
 end
 
+def db_type
+  db_type = nil
+  in_root do
+    File.readlines("config/database.yml").each do |line|
+      matches = line.match(/adapter: ([a-zA-Z0-9]+)/)
+      if matches.present?
+        db_type = matches.captures.first
+        break
+      end
+    end
+  end
+  db_type.to_sym
+end
+
 ##################
 #    CLEANUP     #
 ##################
 
-######################
-#   Database Setup   #
-######################
+########################
+#   Database Scripts   #
+########################
 
-db = nil
-in_root do
-  File.readlines("config/database.yml").each do |line|
-    matches = line.match(/adapter: ([a-zA-Z0-9]+)/)
-    if matches.present?
-      db = matches.captures.first
-      break
-    end
-  end
-end
+# Uncomment bcrypt gem:
+uncomment_lines 'Gemfile', /gem 'bcrypt'/
+gsub_file 'config/database.yml', /password:$/, 'password: root'
 
-if db == 'postgresql'
+if db_type == :postgresql
   # Postgres startup script:
   copy_file "templates/bin/local_postgres.sh", "bin/local_postgres.sh"
   run "chmod +x bin/local_postgres.sh"
   append_to_file ".gitignore", "vendor/postgresql/*"
 
-  self.db_start_script = "bin/local_postgres.sh"
+  self.db_start_command = "bin/local_postgres.sh"
 else
-  self.db_start_script = "mysql -uroot -proot -A"
-end
-
-with_db do
-  rake "db:create"
+  self.db_start_command = "mysqld"
 end
 
 ##################
@@ -75,7 +78,7 @@ copy_file "templates/config/unicorn.rb", "config/unicorn.rb"
 gem 'foreman'
 create_file "Procfile" do
   file_lines = []
-  file_lines << "db: #{db_start_script}"
+  file_lines << "db: #{db_start_command}"
   file_lines << "web: bundle exec unicorn_rails -c ./config/unicorn.rb"
   file_lines.join("\n")
 end
@@ -113,12 +116,19 @@ if yes?("Would you like to install Devise?")
   end
 end
 
-##################
-# Run Migrations #
-##################
+############
+# DB Setup #
+############
 after_bundle do
   with_db do
-    rake "db:migrate"
+    ['development', 'test'].each do |env|
+      # Special case for the test app, drop existing DB's before re-creating.
+      # We don't want to do this for all apps, or we might over-right another
+      # app's DB by mistake.
+      rake "db:drop", env: env if app_name == "test_app"
+      rake "db:create", env: env
+      rake "db:migrate", env: env
+    end
   end
 end
 
