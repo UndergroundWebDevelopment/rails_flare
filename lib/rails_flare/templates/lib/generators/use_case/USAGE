@@ -1,0 +1,9 @@
+Description:
+    Generates a skeleton UseCase class
+
+Example:
+    rails generate use_case CreateUser
+
+    This will create:
+        app/use_cases/create_user.rb
+        spec/use_cases/create_user_spec.rb

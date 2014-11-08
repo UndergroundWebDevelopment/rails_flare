@@ -44,6 +44,10 @@ unless app_name == "test_app"
   end
 end
 
+insert_into_file "app/controllers/application_controller.rb", before: "end\n" do 
+  "  private\n"
+end
+
 ########################
 #   Database Scripts   #
 ########################
@@ -122,6 +126,42 @@ config.generators do |g|
     end
 RUBY
 end
+
+# Install use-case generator:
+directory "templates/lib/generators/use_case", "lib/generators/use_case"
+# Install use-case mixin:
+directory "templates/app/use_cases/concerns", "app/use_cases/concerns"
+application 'config.autoload_paths += %W(#{config.root}/app/use_cases/concerns)'
+
+# Basic exceptions:
+directory "templates/lib/errors", "lib/errors"
+application 'config.autoload_paths += %W(#{config.root}/lib/errors)'
+inject_into_class "app/controllers/application_controller.rb", "ApplicationController" do <<-'RUBY'
+
+  rescue_from ValidationError, with: :invalid_request
+  rescue_from UnauthorizedError, with: :unauthorized_request
+  rescue_from ServiceFailedError, with: :service_failed
+
+RUBY
+end
+
+insert_into_file "app/controllers/application_controller.rb", after: "private\n" do <<-'RUBY'
+
+  def service_failed(error)
+    return render json: {errors: [error.to_s]}, status: :internal_server_error
+  end
+
+  def unauthorized_request(error)
+    return render json: {errors: [error.to_s]}, status: :unauthorized
+  end
+
+  def invalid_request(error)
+    return render json: {errors: [error.to_s]}, status: :bad_request
+  end
+
+RUBY
+end
+
 
 ###########################
 #   Testing & Dev Tools   #
@@ -280,10 +320,13 @@ asset 'ember-simple-auth'
     RUBY
     end
     gsub_file "config/routes.rb", "devise_for :#{user_model_name.pluralize}", "devise_for :#{user_model_name.pluralize}, controllers: { sessions: 'sessions' }"
-    insert_into_file "app/controllers/application_controller.rb", before: "end\n" do <<-RUBY
+    inject_into_class "app/controllers/application_controller.rb", "ApplicationController" do <<-RUBY
   before_filter :authenticate_user_from_token!
 
-  private
+    RUBY
+    end
+
+    insert_into_file "app/controllers/application_controller.rb", after: "private\n" do <<-RUBY
 
   def authenticate_user_from_token!
     authenticate_with_http_token do |token, options|
