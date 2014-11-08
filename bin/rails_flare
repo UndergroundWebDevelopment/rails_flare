@@ -21,7 +21,7 @@ module Rails
 end
 
 # This line begins the api_app logic:
-class ApiApp < Thor
+class RailsFlare < Thor
   include Thor::Actions
 
   desc "new", "Creates a new Rails API App"
@@ -46,9 +46,9 @@ class ApiApp < Thor
     database = ask "What database would you like to use? (Default postgresql)", limited_to: db_opts
     database = "postgresql" if database == ""
 
-    root_path = File.expand_path("#{File.dirname(__FILE__)}/../")
+    root_path = File.expand_path("../", __FILE__)
     options = [
-      "--template=#{File.join(root_path, "api_template.rb")}",
+      "--template=#{File.join(root_path, "lib", "rails_flare", "api_template.rb")}",
       "--database=#{database}",
       "--skip-gems=jbuilder",
       "--skip-gems=rails-html-sanitizer",
@@ -63,6 +63,7 @@ class ApiApp < Thor
 
   desc "new_test", "Creates a new test app (in the test_app folder)"
   def new_test
+    clear_test
     new("test_app")
   end
 
@@ -74,4 +75,4 @@ class ApiApp < Thor
   end
 end
 
-ApiApp.start
+RailsFlare.start
