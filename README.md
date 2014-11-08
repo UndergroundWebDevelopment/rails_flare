@@ -10,7 +10,7 @@ The created app has the following features:
 
 Usage:
 
-`bin/api_app`
+`rails_flare new`
 
 More information about application templates can be found
 [here](http://guides.rubyonrails.org/rails_application_templates.html).
