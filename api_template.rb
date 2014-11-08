@@ -2,6 +2,28 @@ def source_paths
   [File.expand_path(File.dirname(__FILE__))]
 end
 
+def db_start_script
+  @db_start_script || raise("DB Start Script not yet set!")
+end
+
+def db_start_script= (val)
+  @db_start_script = val
+end
+
+def with_db(options = {})
+  options[:sleep] ||= 3
+  db_pid = fork do
+    exec db_start_script
+  end
+
+  sleep options[:sleep]
+  begin
+    yield
+  ensure
+    Process.kill("TERM", db_pid)
+  end
+end
+
 ##################
 #    CLEANUP     #
 ##################
@@ -27,18 +49,14 @@ if db == 'postgresql'
   run "chmod +x bin/local_postgres.sh"
   append_to_file ".gitignore", "vendor/postgresql/*"
 
-  db_start_script = "bin/local_postgres.sh"
+  self.db_start_script = "bin/local_postgres.sh"
 else
-  db_start_script = "mysql -uroot -proot -A"
+  self.db_start_script = "mysql -uroot -proot -A"
 end
 
-db_pid = fork do
-  exec db_start_script
+with_db do
+  rake "db:create"
 end
-
-sleep 3
-rake "db:create"
-Process.kill("TERM", db_pid)
 
 ##################
 #  Server Setup  #
@@ -92,6 +110,15 @@ if yes?("Would you like to install Devise?")
 
   after_bundle do
     generate "devise", model_name
+  end
+end
+
+##################
+# Run Migrations #
+##################
+after_bundle do
+  with_db do
+    rake "db:migrate"
   end
 end
 
