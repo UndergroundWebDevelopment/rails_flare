@@ -167,37 +167,36 @@ if yes? "Would you like to install EmberJS?"
   gem "ember-source", version: "~> 1.8.1"
   gem 'coffee-rails', version: "~> 4.1.0"
   gem 'haml-rails', version: "~> 0.5.3"
+  gem 'hamlbars', '~> 2.1'
 
   after_bundle do
     generate "ember:bootstrap", "-g --javascript-engine coffee"
     
     # Configure the app to serve Ember.js and app assets from an AssetsController
     generate :controller, "Assets", "index"
-    run "rm app/views/assets/index.html.erb"
-    file 'app/views/assets/index.html.erb', <<-CODE
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>#{@app_name.titleize}</title>
-      <%= stylesheet_link_tag    "application", :media => "all" %>
-      <%= csrf_meta_tags %>
-    </head>
-    <body>
-      <%= javascript_include_tag "application" %>
-    </body>
-    </html>
+    run "rm app/views/assets/index.html.haml"
+    file 'app/views/assets/index.html.haml', <<-CODE
+!!!
+%html
+  %head
+    %title Test App
+    = stylesheet_link_tag    "application", :media => "all"
+    = csrf_meta_tags
+  %body
+    = javascript_include_tag "application"
     CODE
 
     remove_file 'app/assets/javascripts/templates/application.handlebars'
 
-    file 'app/assets/javascripts/templates/application.handlebars', <<-CODE
-    <div style="width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; text-align: center; font-family: sans-serif;">
-      <img src="http://emberjs.com/images/about/ember-productivity-sm.png" style="display: block; margin: 0 auto;">
-      <h1>Welcome to Ember.js!</h1>
-      <p>You're running an Ember.js app on top of Ruby on Rails. To get started, replace this content
-      (inside <code>app/assets/javascripts/templates/application.handlebars</code>) with your application's
-      HTML.</p>
-    </div>
+    file 'app/assets/javascripts/templates/application.js.hbs.hamlbars', <<-CODE
+%div{:style => "width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; text-align: center; font-family: sans-serif;"}
+  %img{:src => "http://emberjs.com/images/about/ember-productivity-sm.png", :style => "display: block; margin: 0 auto;"}/
+  %h1 Welcome to Ember.js!
+  %p
+    You're running an Ember.js app on top of Ruby on Rails. To get started, replace this content
+    (inside
+    %code app/assets/javascripts/templates/application.js.hbs.hamlbars
+    ) with your application's HTML.
     CODE
 
     run "rm -rf app/views/layouts"

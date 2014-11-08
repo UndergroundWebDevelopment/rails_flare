@@ -14,7 +14,6 @@ The created app has the following features:
 
 ## Todo:
   * Add support for postgis geo data (optional)
-  * Ensure roar-rails works (we may have to define a hal media type).
   * Add Ember support (optional).
 
 ### More Information
