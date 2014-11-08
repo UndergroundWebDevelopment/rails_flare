@@ -46,7 +46,7 @@ class RailsFlare < Thor
     database = ask "What database would you like to use? (Default postgresql)", limited_to: db_opts
     database = "postgresql" if database == ""
 
-    root_path = File.expand_path("../", __FILE__)
+    root_path = File.expand_path("../../", __FILE__)
     options = [
       "--template=#{File.join(root_path, "lib", "rails_flare", "api_template.rb")}",
       "--database=#{database}",
