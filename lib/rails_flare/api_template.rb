@@ -38,10 +38,6 @@ def db_type
   db_type.to_sym
 end
 
-##################
-#    CLEANUP     #
-##################
-
 ########################
 #   Database Scripts   #
 ########################
@@ -65,7 +61,7 @@ end
 #  Server Setup  #
 ##################
 # Unicorn:
-gem "unicorn"
+gem "unicorn", version: "~> 4.8.3"
 run "mkdir -p tmp/pids/"
 
 # Unicorn config file:
@@ -75,7 +71,7 @@ copy_file "templates/config/unicorn.rb", "config/unicorn.rb"
 # Proces Manager #
 ##################
 # Foreman:
-gem 'foreman'
+gem 'foreman', version: '~> 0.75'
 create_file "Procfile" do
   file_lines = []
   file_lines << "db: #{db_start_command}"
@@ -83,19 +79,72 @@ create_file "Procfile" do
   file_lines.join("\n")
 end
 
+################################
+# Common Gems & General Config #
+################################
+
+gem 'pundit', version: '~> 0.3.0'
+after_bundle do
+  generate "pundit:install"
+  inject_into_file "app/controllers/application_controller.rb", after: "class ApplicationController < ActionController::Base\n" do <<-'RUBY'
+  include Pundit
+  RUBY
+  end
+end
+gem 'reform', version: '~> 1.2.1' # Advanced form objects
+gem 'kaminari', version: '~> 0.16.1' # Pagnination
+gem 'annotate', version: '~> 2.6.5'
+after_bundle do
+  run 'annotate'
+end
+gem "paranoia", version: "~> 2.0"
+gem 'responders', version: '~> 2.0' # respond_to & respond_with
+gem "roar-rails", version: "~> 0.1.6" # ROAR representers & parsers.
+application "config.representer.represented_formats = [:hal, :json]"
+after_bundle do
+  inject_into_file "app/controllers/application_controller.rb", after: "class ApplicationController < ActionController::Base\n" do <<-'RUBY'
+  include Roar::Rails::ControllerAdditions
+  respond_to :json, :hal
+  RUBY
+  end
+end
+
+gsub_file 'app/controllers/application_controller.rb', /protect_from_forgery with: :exception/, 'protect_from_forgery with: :null_session'
+
 ###########################
 #   Testing & Dev Tools   #
 ###########################
 
-# Add rspec-rails to the Gemfile
 gem_group :development, :test do
+  # RSpec for tests:
   gem "rspec-rails", version: "~> 3.0.0"
+  after_bundle do
+    generate "rspec:install"
+  end
+
+  # Faker
+  gem 'faker', version: '~> 1.4.3'
+
+  # Jazz hands brings pry, pretty_print, and more
+  # to rails:
+  gem 'jazz_hands',                   # Make rails console a lot better
+    github: 'jkrmr/jazz_hands',       # Fork that has pry 0.10.0
+    branch: 'byebug_and_updated_pry'  # Needed so we can use pry-byebug
+
+  # Capistrano 3 for deployment:
+  gem 'capistrano', version: '~> 3.2.0'
+  after_bundle do
+    run 'bundle exec cap install'
+  end
+end
+
+gem_group :development, :staging do
+  # MailSafe protects against sending real emails in development & staging
+  # environments.
+  gem 'mail_safe', version: '~> 0.3.3'
 end
 
 # Run rspec generator:
-after_bundle do
-  generate "rspec:install"
-end
 
 ##################
 #    Options     #
@@ -103,7 +152,7 @@ end
 
 # Devise:
 if yes?("Would you like to install Devise?")
-  gem "devise"
+  gem "devise", version: '~> 3.4.1'
   after_bundle do
     generate "devise:install"
   end
@@ -113,6 +162,7 @@ if yes?("Would you like to install Devise?")
 
   after_bundle do
     generate "devise", model_name
+    generate "migration", "AddDeletedAtTo#{model_name.camelize} deleted_at:datetime:index"
   end
 end
 
