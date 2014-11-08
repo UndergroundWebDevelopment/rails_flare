@@ -152,12 +152,12 @@ if yes? "Would you like to install Devise?"
     generate "devise:install"
   end
 
-  model_name = ask("What would you like the user model to be called? [user]")
-  model_name = "user" if model_name.blank?
+  user_model_name = ask("What would you like the user model to be called? [user]")
+  user_model_name = "user" if user_model_name.blank?
 
   after_bundle do
-    generate "devise", model_name
-    generate "migration", "AddDeletedAtTo#{model_name.camelize} deleted_at:datetime:index"
+    generate "devise", user_model_name
+    generate "migration", "AddDeletedAtTo#{user_model_name.camelize} deleted_at:datetime:index"
   end
 end
 
@@ -167,7 +167,8 @@ if yes? "Would you like to install EmberJS?"
   gem "ember-source", version: "~> 1.8.1"
   gem 'coffee-rails', version: "~> 4.1.0"
   gem 'haml-rails', version: "~> 0.5.3"
-  gem 'hamlbars', '~> 2.1'
+  gem 'hamlbars', version: '~> 2.1'
+  gem "bower-rails", version: "~> 0.9.2"
 
   after_bundle do
     generate "ember:bootstrap", "-g --javascript-engine coffee"
@@ -207,6 +208,71 @@ if yes? "Would you like to install EmberJS?"
     inject_into_class "app/serializers/application_serializer.rb", 'ApplicationSerializer' do
       "  embed :ids, :include => true\n"
     end
+
+    generate "bower_rails:initialize"
+    append_to_file "Bowerfile" do <<-RUBY
+asset 'ember-simple-auth'
+    RUBY
+    end
+    generate "migration", "AddAuthenticationTokenTo#{user_model_name.camelize} authentication_token:string"
+
+    insert_into_file "app/models/#{user_model_name}.rb", before: "end\n" do <<-RUBY
+  before_save :ensure_authentication_token
+
+  def ensure_authentication_token
+    if authentication_token.blank?
+      self.authentication_token = generate_authentication_token
+    end
+  end
+
+  private
+
+  def generate_authentication_token
+    loop do
+      token = Devise.friendly_token
+      break token unless User.where(authentication_token: token).first
+    end
+  end
+    RUBY
+    end
+    generate :controller, "Sessions", "create", "--helper false --assets false --no-view-specs --skip-routes"
+    run 'rm -rf app/views/sessions'
+    gsub_file "app/controllers/sessions_controller.rb", "ApplicationController", "Devise::SessionsController"
+    insert_into_file "app/controllers/sessions_controller.rb", after: "def create\n" do <<-'RUBY'
+    respond_to do |format|
+      format.html { super }
+      format.json do
+        self.resource = warden.authenticate!(auth_options)
+        sign_in(resource_name, resource)
+        data = {
+          user_token: self.resource.authentication_token,
+          user_email: self.resource.email
+        }
+        render json: data, status: 201
+      end
+    end
+    RUBY
+    end
+    gsub_file "config/routes.rb", "devise_for :#{user_model_name.pluralize}", "devise_for :#{user_model_name.pluralize}, controllers: { sessions: 'sessions' }"
+    insert_into_file "app/controllers/application_controller.rb", before: "end\n" do <<-RUBY
+  before_filter :authenticate_user_from_token!
+
+  private
+
+  def authenticate_user_from_token!
+    authenticate_with_http_token do |token, options|
+      user_email = options[:user_email].presence
+      user       = user_email && User.find_by_email(user_email)
+
+      if user && Devise.secure_compare(user.authentication_token, token)
+        sign_in user, store: false
+      end
+    end
+  end
+    RUBY
+    end
+    gsub_file "config/initializers/session_store.rb", /Rails.application.config.session_store (.*)$/, "Rails.application.config.session_store :disabled"
+    rake "bower:install"
   end
 end
 
