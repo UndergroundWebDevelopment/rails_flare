@@ -67,6 +67,18 @@ else
   self.db_start_command = "mysqld"
 end
 
+gem "sequel-rails", version: "~> 0.9.5"
+gem "simple_repository"
+comment_lines "config/application.rb", /active_record/
+comment_lines "config/environments/development.rb", /active_record/
+comment_lines "config/environments/test.rb", /active_record/
+comment_lines "config/environments/production.rb", /active_record/
+generate "simple_repository:install"
+
+# Over-ride sequel generators:
+# directory "templates/lib/generators/sequel", "lib/generators/sequel"
+
+
 ##################
 #  Server Setup  #
 ##################
@@ -102,12 +114,13 @@ after_bundle do
   end
 end
 gem 'reform', version: '~> 1.2.1' # Advanced form objects
-gem 'kaminari', version: '~> 0.16.1' # Pagnination
+gem "virtus", version: "~> 1.0"
+gem "virtus-dirty_attribute", version: "~> 0.1"
 gem 'annotate', version: '~> 2.6.5'
 after_bundle do
   run 'annotate'
 end
-gem "paranoia", version: "~> 2.0"
+# gem "paranoia", version: "~> 2.0"
 gem 'responders', version: '~> 2.0' # respond_to & respond_with
 gem "active_model_serializers", version: "~> 0.9.0"
 
@@ -157,6 +170,10 @@ insert_into_file "app/controllers/application_controller.rb", after: "private\n"
 
   def invalid_request(error)
     return render json: {errors: [error.to_s]}, status: :bad_request
+  end
+
+  def not_found(error)
+    return render json: {errors: [error.to_s]}, status: :not_found
   end
 
 RUBY
@@ -209,22 +226,6 @@ application 'config.lograge.enabled = true', env: ["production", "staging"]
 ##################
 #    Options     #
 ##################
-
-# Devise:
-if yes? "Would you like to install Devise?"
-  gem "devise", version: '~> 3.4.1'
-  after_bundle do
-    generate "devise:install"
-  end
-
-  user_model_name = ask("What would you like the user model to be called? [user]")
-  user_model_name = "user" if user_model_name.blank?
-
-  after_bundle do
-    generate "devise", user_model_name
-    generate "migration", "AddDeletedAtTo#{user_model_name.camelize} deleted_at:datetime:index"
-  end
-end
 
 if yes? "Would you like to install EmberJS?"
   gem "jquery-rails", version: "~> 3.1.2"
@@ -280,66 +281,7 @@ div style="width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; 
 asset 'ember-simple-auth'
     RUBY
     end
-    generate "migration", "AddAuthenticationTokenTo#{user_model_name.camelize} authentication_token:string"
 
-    insert_into_file "app/models/#{user_model_name}.rb", before: "end\n" do <<-RUBY
-  before_save :ensure_authentication_token
-
-  def ensure_authentication_token
-    if authentication_token.blank?
-      self.authentication_token = generate_authentication_token
-    end
-  end
-
-  private
-
-  def generate_authentication_token
-    loop do
-      token = Devise.friendly_token
-      break token unless User.where(authentication_token: token).first
-    end
-  end
-    RUBY
-    end
-    generate :controller, "Sessions", "create", "--helper false --assets false --no-view-specs --skip-routes"
-    run 'rm -rf app/views/sessions'
-    gsub_file "app/controllers/sessions_controller.rb", "ApplicationController", "Devise::SessionsController"
-    insert_into_file "app/controllers/sessions_controller.rb", after: "def create\n" do <<-'RUBY'
-    respond_to do |format|
-      format.html { super }
-      format.json do
-        self.resource = warden.authenticate!(auth_options)
-        sign_in(resource_name, resource)
-        data = {
-          user_token: self.resource.authentication_token,
-          user_email: self.resource.email
-        }
-        render json: data, status: 201
-      end
-    end
-    RUBY
-    end
-    gsub_file "config/routes.rb", "devise_for :#{user_model_name.pluralize}", "devise_for :#{user_model_name.pluralize}, controllers: { sessions: 'sessions' }"
-    inject_into_class "app/controllers/application_controller.rb", "ApplicationController" do <<-RUBY
-  before_filter :authenticate_user_from_token!
-
-    RUBY
-    end
-
-    insert_into_file "app/controllers/application_controller.rb", after: "private\n" do <<-RUBY
-
-  def authenticate_user_from_token!
-    authenticate_with_http_token do |token, options|
-      user_email = options[:user_email].presence
-      user       = user_email && User.find_by_email(user_email)
-
-      if user && Devise.secure_compare(user.authentication_token, token)
-        sign_in user, store: false
-      end
-    end
-  end
-    RUBY
-    end
     gsub_file "config/initializers/session_store.rb", /Rails.application.config.session_store (.*)$/, "Rails.application.config.session_store :disabled"
     rake "bower:install"
 
@@ -371,7 +313,11 @@ after_bundle do
       # app's DB by mistake.
       rake "db:drop", env: env if app_name == "test_app"
       rake "db:create", env: env
-      rake "db:migrate", env: env
+
+      # Only bother running migrations if we've setup any:
+      if Dir.exist? "db/migrate"
+        rake "db:migrate", env: env
+      end
     end
   end
 end
