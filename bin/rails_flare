@@ -32,7 +32,6 @@ class RailsFlare < Thor
       app_name,
       "--skip-javascript",
       "--skip-test-unit",
-      "--skip-sprockets",
       "--template #{File.join(root_path, "lib", "rails_flare", "api_template.rb")}",
       "--database #{database}",
       "--skip-gems jbuilder rails-html-sanitizer",

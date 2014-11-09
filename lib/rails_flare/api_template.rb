@@ -162,7 +162,6 @@ insert_into_file "app/controllers/application_controller.rb", after: "private\n"
 RUBY
 end
 
-
 ###########################
 #   Testing & Dev Tools   #
 ###########################
@@ -342,6 +341,21 @@ asset 'ember-simple-auth'
     end
     gsub_file "config/initializers/session_store.rb", /Rails.application.config.session_store (.*)$/, "Rails.application.config.session_store :disabled"
     rake "bower:install"
+
+    # Install bootstrap to fascilitate Ember app development:
+    gem 'bootstrap-sass', version: '~> 3.3.0'
+    gem 'autoprefixer-rails', version: '~> 3.1.2.0'
+    run "rm app/assets/stylesheets/application.css"
+    create_file "app/assets/stylesheets/application.css.sass" do <<-'RUBY'
+@import "bootstrap-sprockets"
+@import "bootstrap"
+    RUBY
+    end
+
+    insert_into_file "app/assets/javascripts/application.js.coffee", after: "#= require jquery\n" do <<-'RUBY'
+#= require bootstrap-sprockets
+    RUBY
+    end
   end
 end
 
