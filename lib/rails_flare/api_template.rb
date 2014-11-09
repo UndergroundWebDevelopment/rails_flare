@@ -231,6 +231,7 @@ if yes? "Would you like to install EmberJS?"
   gem "ember-rails", version: "~> 0.15.0"
   gem "ember-source", version: "~> 1.8.1"
   gem 'coffee-rails', version: "~> 4.1.0"
+  gem 'coffee-rails-source-maps', version: '~> 1.4.0', group: "development"
   gem 'haml-rails', version: "~> 0.5.3"
   gem 'hamlbars', version: '~> 2.1'
   gem "bower-rails", version: "~> 0.9.2"
