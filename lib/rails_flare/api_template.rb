@@ -234,6 +234,7 @@ if yes? "Would you like to install EmberJS?"
   gem 'haml-rails', version: "~> 0.5.3"
   gem 'hamlbars', version: '~> 2.1'
   gem "bower-rails", version: "~> 0.9.2"
+  gem 'emblem-rails', version: "~> 0.2.1"
 
   after_bundle do
     generate "ember:bootstrap", "-g --javascript-engine coffee"
@@ -254,15 +255,14 @@ if yes? "Would you like to install EmberJS?"
 
     remove_file 'app/assets/javascripts/templates/application.handlebars'
 
-    file 'app/assets/javascripts/templates/application.js.hbs.hamlbars', <<-CODE
-%div{:style => "width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; text-align: center; font-family: sans-serif;"}
-  %img{:src => "http://emberjs.com/images/about/ember-productivity-sm.png", :style => "display: block; margin: 0 auto;"}/
-  %h1 Welcome to Ember.js!
-  %p
-    You're running an Ember.js app on top of Ruby on Rails. To get started, replace this content
-    (inside
-    %code app/assets/javascripts/templates/application.js.hbs.hamlbars
-    ) with your application's HTML.
+    file 'app/assets/javascripts/templates/application.emblem', <<-CODE
+div style="width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; text-align: center; font-family: sans-serif;"
+  img src="http://emberjs.com/images/about/ember-productivity-sm.png" style="display: block; margin: 0 auto;"
+  h1 Welcome to Ember.js!
+  p 
+    | You're running an Ember.js app on top of Ruby on Rails. To get started, replace this content (inside
+    code app/assets/javascripts/templates/application.emblem
+    | ) with your application's HTML.
     CODE
 
     run "rm -rf app/views/layouts"
