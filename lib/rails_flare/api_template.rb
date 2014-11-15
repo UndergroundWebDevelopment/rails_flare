@@ -73,7 +73,9 @@ comment_lines "config/application.rb", /active_record/
 comment_lines "config/environments/development.rb", /active_record/
 comment_lines "config/environments/test.rb", /active_record/
 comment_lines "config/environments/production.rb", /active_record/
-generate "simple_repository:install"
+after_bundle do
+  generate "simple_repository:install"
+end
 
 # Over-ride sequel generators:
 # directory "templates/lib/generators/sequel", "lib/generators/sequel"
@@ -177,6 +179,86 @@ insert_into_file "app/controllers/application_controller.rb", after: "private\n"
   end
 
 RUBY
+end
+
+if yes? "Would you like to install Warden and configure Authentication?"
+  auth_model_name = ask "What should the auth (user) model be called? Default: user"
+  auth_model_name = auth_model_name.present? ? auth_model_name : "user"
+  auth_model_path = auth_model_name.underscore
+  auth_model_class = auth_model_name.camelize
+  puts "Creating auth for model '#{auth_model_class}'"
+
+  # Install and configure warden:
+  gem 'rails_warden'
+
+  inject_into_class "app/controllers/application_controller.rb", "ApplicationController" do <<-'RUBY'
+
+  def unauthorized
+    return unauthorized_request("Unauthorized")
+  end
+  RUBY
+  end
+
+  template "templates/config/initializers/warden.rb", "config/initializers/warden.rb"
+
+  after_bundle do
+    # NOTE: Running this with "no migration" as initially we're using a memory
+    # store... finalizing the choice of data stores can (and should) come later.
+    generate "scaffold #{auth_model_path} id:integer given_name:string family_name email:string password_digest:string api_token:string --no-migration"
+
+    inject_into_class "app/models/#{auth_model_path}.rb", "#{auth_model_class}" do <<-'RUBY'
+  include ActiveModel::SecurePassword
+
+  has_secure_password
+    RUBY
+    end
+
+    inject_into_class "app/repositories/#{auth_model_path}_repo.rb", "#{auth_model_class}Rep" do <<-RUBY
+    class << self
+      def find_by_email(email)
+        query #{auth_model_class}WithEmail.new(email)
+        # all.select {|#{auth_model_path}| #{auth_model_path}.email == email}.first
+      end
+
+      def find_by_api_token(api_token)
+        query #{auth_model_class}WithApiToken.new(api_token)
+        # all.select {|#{auth_model_path}| #{auth_model_path}.api_token == api_token}.first
+      end
+    end
+    RUBY
+    end
+
+    append_to_file "app/repositories/#{auth_model_path}_repo.rb" do <<-RUBY
+
+#{auth_model_class}WithEmail = Struct.new(:email)
+#{auth_model_class}WithApiToken = Struct.new(:api_token)
+    RUBY
+    end
+
+    create_file "app/adapters/memory_adapter.rb" do <<-RUBY
+class MemoryAdapter < SimpleRepository::MemoryAdapter
+  def query_#{auth_model_path}_with_email(klass, q)
+    all(klass).find do |#{auth_model_path}|
+      #{auth_model_path}.email == q.email
+    end
+  end
+
+  def query_#{auth_model_path}_with_api_token(klass, q)
+    all(klass).find do |#{auth_model_path}|
+      #{auth_model_path}.api_token == q.api_token
+    end
+  end
+end
+    RUBY
+    end
+
+    append_to_file "config/initializers/simple_repository.rb" do <<-'RUBY'
+
+SimpleRepository.repo.register :memory, MemoryAdapter.new
+SimpleRepository.repo.use :memory
+    RUBY
+    end
+  end
 end
 
 ###########################
