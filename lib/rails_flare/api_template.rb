@@ -44,7 +44,13 @@ unless app_name == "test_app"
   end
 end
 
+generate "controller api/api --skip-routes --helper=false --assets=false"
+run "rm -rf app/views/api"
+
 insert_into_file "app/controllers/application_controller.rb", before: "end\n" do 
+  "  private\n"
+end
+insert_into_file "app/controllers/api/api_controller.rb", before: "end\n" do 
   "  private\n"
 end
 
@@ -77,10 +83,6 @@ after_bundle do
   generate "simple_repository:install"
 end
 
-# Over-ride sequel generators:
-# directory "templates/lib/generators/sequel", "lib/generators/sequel"
-
-
 ##################
 #  Server Setup  #
 ##################
@@ -110,10 +112,6 @@ end
 gem 'pundit', version: '~> 0.3.0'
 after_bundle do
   generate "pundit:install"
-  inject_into_file "app/controllers/application_controller.rb", after: "class ApplicationController < ActionController::Base\n" do <<-'RUBY'
-  include Pundit
-  RUBY
-  end
 end
 gem 'reform', version: '~> 1.2.1' # Advanced form objects
 gem "virtus", version: "~> 1.0"
@@ -124,10 +122,17 @@ after_bundle do
 end
 # gem "paranoia", version: "~> 2.0"
 gem 'responders', version: '~> 2.0' # respond_to & respond_with
-gem "active_model_serializers", version: "~> 0.9.0"
+gem "roar-rails", version: "~> 0.1.6"
+
+# Configure roar to represent JSON. This also remvoes the need to explicitly
+# state responds_to in any controllers. 
+application "config.representer.represented_formats = [:json]"
 
 # Fix forgery protection for an API:
-gsub_file 'app/controllers/application_controller.rb', /protect_from_forgery with: :exception/, 'protect_from_forgery with: :null_session'
+inject_into_class 'app/controllers/api/api_controller.rb', "ApiController" do <<-RUBY
+  protect_from_forgery with: :null_session
+RUBY
+end
 
 # Configure rails scaffold to be more in-line with API development:
 # NOTE: I know the indenting looks off, but it works.
@@ -138,6 +143,8 @@ config.generators do |g|
       g.stylesheets     false
       g.javascripts     false
       g.helper          false
+      g.scaffold_controller = :api_controller
+      g.controller = :api_controller
     end
 RUBY
 end
@@ -148,6 +155,9 @@ directory "templates/lib/generators/use_case", "lib/generators/use_case"
 directory "templates/app/use_cases/concerns", "app/use_cases/concerns"
 application 'config.autoload_paths += %W(#{config.root}/app/use_cases/concerns)'
 
+# Install over-ridden rails generators:
+directory "templates/lib/generators/rails", "lib/generators/rails"
+
 # Basic exceptions:
 directory "templates/lib/errors", "lib/errors"
 application 'config.autoload_paths += %W(#{config.root}/lib/errors)'
@@ -155,6 +165,7 @@ inject_into_class "app/controllers/application_controller.rb", "ApplicationContr
 
   rescue_from ValidationError, with: :invalid_request
   rescue_from UnauthorizedError, with: :unauthorized_request
+  rescue_from Pundit::NotAuthorizedError, with: :unauthorized_request
   rescue_from ServiceFailedError, with: :service_failed
 
 RUBY
@@ -163,68 +174,59 @@ end
 insert_into_file "app/controllers/application_controller.rb", after: "private\n" do <<-'RUBY'
 
   def service_failed(error)
-    return render json: {errors: [error.to_s]}, status: :internal_server_error
+    respond_with error, status: :internal_server_error
   end
 
   def unauthorized_request(error)
-    return render json: {errors: [error.to_s]}, status: :unauthorized
+    respond_with error, status: :unauthorized
   end
 
   def invalid_request(error)
-    return render json: {errors: [error.to_s]}, status: :bad_request
+    respond_with error, status: :bad_request
   end
 
   def not_found(error)
-    return render json: {errors: [error.to_s]}, status: :not_found
+    respond_with error, status: :not_found
   end
 
 RUBY
 end
 
-if yes? "Would you like to install Warden and configure Authentication?"
+if yes? "Configure Authentication?"
   auth_model_name = ask "What should the auth (user) model be called? Default: user"
-  auth_model_name = auth_model_name.present? ? auth_model_name : "user"
+  auth_model_name = auth_model_name.present? ? auth_model_name.downcase : "user"
   auth_model_path = auth_model_name.underscore
   auth_model_class = auth_model_name.camelize
   puts "Creating auth for model '#{auth_model_class}'"
 
-  # Install and configure warden:
-  gem 'rails_warden'
-
-  inject_into_class "app/controllers/application_controller.rb", "ApplicationController" do <<-'RUBY'
-
-  def unauthorized
-    return unauthorized_request("Unauthorized")
-  end
-  RUBY
-  end
-
-  template "templates/config/initializers/warden.rb", "config/initializers/warden.rb"
+  copy_file "templates/lib/uwd/security_helpers.rb", "lib/uwd/security_helpers.rb"
 
   after_bundle do
     # NOTE: Running this with "no migration" as initially we're using a memory
     # store... finalizing the choice of data stores can (and should) come later.
-    generate "scaffold #{auth_model_path} id:integer given_name:string family_name email:string password_digest:string api_token:string --no-migration"
+    attrs = "given_name:string surname:string email:string password_digest:string api_token:string"
+    generate "scaffold #{auth_model_path} #{attrs} --no-migration"
+    # TODO: Split this catastrophy up into an api_scaffold generator that
+    # namespaces the route and the controller, but nothing else, etc.
+    generate "pundit:policy #{auth_model_path}"
+    generate "representer #{auth_model_path} #{attrs}"
 
-    inject_into_class "app/models/#{auth_model_path}.rb", "#{auth_model_class}" do <<-'RUBY'
+    inject_into_class "app/models/#{auth_model_path}.rb", auth_model_class do <<-'RUBY'
   include ActiveModel::SecurePassword
-
   has_secure_password
     RUBY
     end
 
-    inject_into_class "app/repositories/#{auth_model_path}_repo.rb", "#{auth_model_class}Rep" do <<-RUBY
-    class << self
-      def find_by_email(email)
-        query #{auth_model_class}WithEmail.new(email)
-        # all.select {|#{auth_model_path}| #{auth_model_path}.email == email}.first
-      end
-
-      def find_by_api_token(api_token)
-        query #{auth_model_class}WithApiToken.new(api_token)
-        # all.select {|#{auth_model_path}| #{auth_model_path}.api_token == api_token}.first
-      end
+    inject_into_class "app/repositories/#{auth_model_path}_repo.rb", "#{auth_model_class}Repo" do <<-RUBY
+  class << self
+    def find_by_email(email)
+      query #{auth_model_class}WithEmail.new(email)
     end
+
+    def find_by_api_token(api_token)
+      query #{auth_model_class}WithApiToken.new(api_token)
+    end
+  end
     RUBY
     end
 
@@ -256,6 +258,70 @@ end
 
 SimpleRepository.repo.register :memory, MemoryAdapter.new
 SimpleRepository.repo.use :memory
+    RUBY
+    end
+
+    insert_into_file "app/models/#{auth_model_path}.rb", before: "end\n" do <<-RUBY
+
+  def ensure_api_token
+    if api_token.blank?
+      self.api_token = generate_api_token
+    end
+  end
+
+  private
+
+  def generate_api_token
+    loop do
+      token = UWD::SecurityHelpers.secure_random
+      break token unless #{auth_model_class}Repo.find_by_api_token(token)
+    end
+  end
+    RUBY
+    end
+    generate :controller, "api/sessions", "create", "--helper false --assets false --no-view-specs"
+    run 'rm -rf app/views/api'
+    gsub_file "app/controllers/api/sessions_controller.rb", /ApplicationController/, "ApiController"
+
+    inject_into_class "app/controllers/api/sessions_controller.rb", "SessionsController" do <<-RUBY
+  skip_before_filter :authenticate_user_from_token!
+    RUBY
+    end
+
+    insert_into_file "app/controllers/api/sessions_controller.rb", after: "def create\n" do <<-RUBY
+    @#{auth_model_path} = #{auth_model_class}Repo.find_by_email(params[:email])
+    unless @#{auth_model_path} && UWD::SecurityHelpers.secure_compare(@#{auth_model_path}.authenticate(params[:password]))
+      raise UnauthorizedError
+    end
+    respond_with @#{auth_model_path}, status: 201
+    RUBY
+    end
+
+    inject_into_class "app/controllers/api/api_controller.rb", "ApiController" do <<-RUBY
+  before_filter :authenticate_#{auth_model_path}_from_token!
+
+    RUBY
+    end
+
+    insert_into_file "app/controllers/api/api_controller.rb", after: "private\n" do <<-RUBY
+
+  def authenticate_#{auth_model_path}_from_token!
+    @current_#{auth_model_path} = authenticate_with_http_token do |token, options|
+      #{auth_model_path}_email = options[:user_email].presence
+      #{auth_model_path}       = #{auth_model_path}_email && #{auth_model_class}Repo.find_by_email(#{auth_model_path}_email)
+
+      unless #{auth_model_path} && UWD::SecurityHelpers.secure_compare(#{auth_model_path}.api_token, token)
+        raise UnauthorizedError
+      end
+    end
+
+    raise UnauthorizedError unless current_#{auth_model_path}
+  end
+
+  def current_#{auth_model_path}
+    @current_#{auth_model_path}
+  end
+  alias pundit_user current_#{auth_model_path}
     RUBY
     end
   end
@@ -351,12 +417,6 @@ div style="width: 600px; border: 6px solid #eee; margin: 0 auto; padding: 20px; 
 
     run "rm -rf app/views/layouts"
     route "root :to => 'assets#index'"
-
-    # Generate a default serializer that is compatible with ember-data
-    generate :serializer, "application", "--parent", "ActiveModel::Serializer"
-    inject_into_class "app/serializers/application_serializer.rb", 'ApplicationSerializer' do
-      "  embed :ids, :include => true\n"
-    end
 
     generate "bower_rails:initialize"
     append_to_file "Bowerfile" do <<-RUBY

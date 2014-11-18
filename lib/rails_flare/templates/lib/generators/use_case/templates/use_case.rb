@@ -1,8 +1,8 @@
 class <%= class_name %>
   include ::UseCase
 
-  def initialize(data_hash, auth_context)
-    @data_hash, @auth_context = data_hash, auth_context
+  def initialize(model, auth_context)
+    @model, @auth_context = model, auth_context
   end
 
   def call
